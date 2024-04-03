@@ -1,50 +1,49 @@
-# Cahier des charges pour une application de prédiction sur les attaques de phishing en entreprise
+# Requirements for a Phishing Prediction Application for Enterprises
 
-## Demande académique - Projet de Data Mining avec Streamlit
+## Academic Request - Data Mining Project with Streamlit
 
-### Présentation du projet et besoins fonctionnels:
-Le projet consiste à développer une application de prédiction des attaques de phishing en entreprise en utilisant des techniques de Data Mining. L'objectif est d'appliquer les connaissances acquises en data mining pour construire un modèle prédictif robuste.
+### Project Overview and Functional Requirements:
+The project aims to develop an application for predicting phishing attacks in enterprises using Data Mining techniques. The goal is to apply the knowledge acquired in data mining to build a robust predictive model.
 
-### Objectifs du site:
-L'application a pour objectif de démontrer l'application pratique des techniques de data mining dans le domaine de la cybersécurité en fournissant une plateforme interactive de prédiction des attaques de phishing.
+### Site Objectives:
+The application aims to demonstrate the practical application of data mining techniques in the cybersecurity domain by providing an interactive platform for predicting phishing attacks.
 
 ### Benchmark:
-Une analyse des outils et des techniques similaires sera effectuée pour comprendre les meilleures pratiques et les approches les plus efficaces dans ce domaine.
+An analysis of similar tools and techniques will be conducted to understand best practices and the most effective approaches in this field.
 
-### Contenu:
-Le contenu de l'application comprendra des fonctionnalités de prétraitement des données, de construction de modèle, de visualisation des résultats et d'évaluation de la performance du modèle.
+### Content:
+The application content will include features for data preprocessing, model construction, result visualization, and model performance evaluation.
 
-## Solution fonctionnelle
+## Functional Solution
 
-### Les cibles:
-Les utilisateurs cibles de l'application sont les étudiants en informatique, en cybersécurité ou en data science intéressés par l'application des techniques de data mining dans un contexte réel.
+### Target Audience:
+The target users of the application are students in computer science, cybersecurity, or data science interested in applying data mining techniques in a real-world context.
 
-### Web mobile:
-L'application sera développée en utilisant Streamlit, une bibliothèque Python pour la création d'applications web interactives. Elle sera accessible via un navigateur web standard.
+### Mobile Web:
+The application will be developed using Streamlit, a Python library for creating interactive web applications. It will be accessible via a standard web browser.
 
-### Arborescence du site:
-L'organisation des pages et des fonctionnalités de l'application sera structurée de manière à permettre une navigation fluide et une utilisation intuitive.
+### Site Structure:
+The organization of pages and functionalities of the application will be structured to allow smooth navigation and intuitive use.
 
-### Diagramme UML:
-Des diagrammes UML seront utilisés pour modéliser l'architecture de l'application, y compris les différentes couches (interface utilisateur, logique métier, accès aux données) et les interactions entre elles.
+### UML Diagrams:
+UML diagrams will be used to model the architecture of the application, including the different layers (user interface, business logic, data access) and their interactions.
 
-## Organisation du projet
+## Project Organization
 
-### Ressources allouées au projet:
-Les ressources humaines (étudiants participants), les ressources matérielles (ordinateurs, serveurs) et les ressources logicielles (environnement de développement, bibliothèques Python) seront allouées pour mener à bien le projet.
+### Resources Allocated to the Project:
+Human resources (participating students), hardware resources (computers, servers), and software resources (development environment, Python libraries) will be allocated to successfully carry out the project.
 
-### Choix technologiques:
-Le choix de Streamlit comme plateforme de développement sera justifié par sa facilité d'utilisation, sa flexibilité et sa capacité à créer des applications web interactives en utilisant du code Python.
+### Technological Choices:
+The choice of Streamlit as a development platform will be justified by its ease of use, flexibility, and ability to create interactive web applications using Python code.
 
-### Développement et hébergement:
-Le développement de l'application se fera sur GitHub, avec un hébergement gratuit du code. Des versions de démonstration seront disponibles en ligne pour permettre une évaluation continue du projet.
+### Development and Hosting:
+The application development will take place on GitHub, with free hosting of the code. Demo versions will be available online for continuous evaluation of the project.
 
-### Méthodologie appliquée:
-Une méthodologie agile sera suivie, avec des sessions de travail de 2 heures par jour. Une heure sera dédiée à la documentation et à la veille technologique, tandis que l'autre heure sera consacrée au développement effectif de code.
+### Applied Methodology:
+An agile methodology will be followed, with 2-hour work sessions per day. One hour will be dedicated to documentation and technological watch, while the other hour will be devoted to actual code development.
 
-### Story map:
-Une story map sera élaborée pour définir les fonctionnalités de l'application, les prioriser et suivre leur implémentation tout au long du projet.
+### Story Map:
+A story map will be developed to define the application features, prioritize them, and track their implementation throughout the project.
 
-### Coût et recette:
-Les coûts de développement seront minimisés en utilisant des outils et des ressources open source autant que possible. La réussite du projet sera mesurée par la satisfaction des utilisateurs et la qualité du modèle prédictif développé.
-
+### Cost and Revenue:
+Development costs will be minimized by using open-source tools and resources wherever possible. The success of the project will be measured by user satisfaction and the quality of the developed predictive model.
