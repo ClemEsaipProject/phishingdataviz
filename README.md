@@ -47,3 +47,42 @@ A story map will be developed to define the application features, prioritize the
 
 ### Cost and Revenue:
 Development costs will be minimized by using open-source tools and resources wherever possible. The success of the project will be measured by user satisfaction and the quality of the developed predictive model.
+
+### example :
+![image](https://github.com/ClemEsaipProject/phishingdataviz/assets/144778367/680ecefb-408e-44a8-b1f2-9c61d8049b3e)
+Model Parameters:
+
+This shows the parameters used to train the model, such as the data split ratio (for the training set), the number of estimators and the maximum number of features.
+Model Performance:
+
+This section presents model performance on training and test data. Typical metrics include Mean Squared Error (MSE) and coefficient of determination (R-squared).
+Feature Importance:
+
+This horizontal bar chart shows the importance of features in predicting the model. Each bar represents a feature, and its length indicates its relative importance in predicting the model. The most important features are generally those with the highest values.
+In this case :
+
+The "url_length" feature appears to be the most important, followed by "n_redirection", "n_percent", "n_space", and "n_asterisk".
+The value of each feature is plotted on the x-axis, and their importance is plotted on the y-axis.
+This suggests that, in this model, URL length is the most important feature for predicting phishing attacks, followed by the number of redirects, the percentage of specific features in the URL, and other features such as spaces and asterisks.
+
+![image](https://github.com/ClemEsaipProject/phishingdataviz/assets/144778367/ce3dbe1c-4494-4b38-bfd8-ff5abd172f2c)
+Prediction results :
+
+This is a table showing the prediction results for each data example.
+Columns include:
+"actual": The actual class for the data example.
+"predicted": The prediction made by the model for this data example.
+"class: Indicates whether the data example is in the train set or the test set.
+Scatter plot:
+
+This scatter plot shows the comparison between the actual values and the values predicted by the model.
+Each point represents an example of data.
+The points are coloured differently depending on whether they belong to the train or test set.
+The x-axis represents the actual values, while the y-axis represents the predicted values.
+In this case :
+
+You can see that most of the points are aligned close to the diagonal line, which indicates that the model's predictions are fairly close to the actual values.
+The points coloured blue represent the sample data from the test set, while the points coloured grey represent the sample data from the training set.
+This suggests that the model appears to generalise well to the test data, which is a positive indication of its ability to accurately predict phishing attacks.
+
+
