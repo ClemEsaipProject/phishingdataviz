@@ -8,8 +8,7 @@ The project aims to develop an application for scanning URLs and determining the
 ### Objectives of the Application:
 The primary objective of the application is to provide users with a tool to assess the security risks associated with a given URL by leveraging data mining techniques.
 
-### Benchmark:
-An analysis of similar tools and techniques will be conducted to understand best practices and the most effective approaches in URL scanning and threat detection.
+
 
 ### Content:
 The application will include features for URL scanning, threat detection, and risk assessment. It will provide detailed reports on the identified threats and associated risk scores. The application will utilize the API provided by [IPQualityScore](https://www.ipqualityscore.com/) for accessing threat intelligence data and validating URLs against known threat databases.
