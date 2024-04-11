@@ -1,9 +1,14 @@
 import streamlit as st
 import requests 
+from streamlit_keplergl import keplergl_static
+from keplergl import KeplerGl
+from geopy.geocoders import Nominatim
+import pandas as pd
+import json
 
 key="xPMrDOlGT6xmGKihu4RQpNXBiDFTauny"
 base_url = "https://www.ipqualityscore.com/api/json/url/"+key+"/{}"
-
+geolocator = Nominatim(user_agent="my_app")
 
 about_template = """
 <div>
@@ -19,10 +24,18 @@ def get_data(url):
     resp=requests.get(url)
     return resp.json()
 
-
+def get_coordinates(country_code):
+    location = geolocator.geocode(country_code)
+    if location:
+        return location.latitude, location.longitude
+    else:
+        return None, None
+    
 def main():
     menu = ["Home","About"]
     choise =st.sidebar.selectbox("Menu",menu)
+
+    
 
     st.title("Phishing DATA Visualisation")
 
@@ -47,7 +60,7 @@ def main():
                 url = base_url.format(search_url)
                 data=get_data(url)
 
-                st.write(data)
+                # st.write(data)
                                 
                 if data:
     # Récupération des valeurs des clés
@@ -57,6 +70,11 @@ def main():
                     phishing = data.get("phishing", False)
                     suspicious = data.get('suspicious',False)
                     risk_score = data.get('risk_score')
+                    domain_rank =data.get('domain_rank')
+                    country_code =data.get('country_code')
+                    category =data.get('category')
+                    domain_age =data.get('domain-age ')
+                    content_type =data.get('content_type')
                     
     
     # Affichage des valeurs dans Streamlit
@@ -66,8 +84,47 @@ def main():
                     st.write("phishing :", phishing)
                     st.write("suspicious :", suspicious)
                     st.write('risk_score :',risk_score)
+                    st.write('domain_rank :',domain_rank)
+                    st.write('country_code :',country_code)
+                    st.write('category :',category)
+                    st.write('domain_age :',domain_age)
+                    st.write('content_type :',content_type)
 
- 
+
+
+       
+        
+        with col2:
+            if submit_search and data:
+                # Vérifie si la valeur de 'country_code' est un dictionnaire
+                if isinstance(data, dict):
+                    # Si value est un dictionnaire, accédez à l'élément "country_code"
+                    country_code = data.get("country_code")
+                    if country_code:
+                        latitude, longitude = get_coordinates(country_code)
+                        coordinate= pd.json_normalize({'latitude':latitude,
+                                     'longitude':longitude})
+                        # st.write(latitude)
+                        # st.write(longitude)
+                        
+                        # coordinate_json =json.dumps(coordinate)
+                        
+                        st.dataframe(coordinate)
+                        maps = KeplerGl(height=400)
+
+                    # Ajout des données à la carte
+                        maps.add_data(data=coordinate, name='location')
+
+                    # Affichage de la carte dans Streamlit
+                        keplergl_static(maps,width=400,center_map=True)
+                    else:
+                    # Si value n'est pas un dictionnaire, faites quelque chose d'autre
+                        pass
+
+
+                
+                
+    
     else:
         st.subheader("About")
         st.title("About")
