@@ -37,3 +37,10 @@ Comprehensive documentation will be provided to guide users on the use of the ap
 ### Cost and Revenue:
 The application will be freely available for use, with no cost to users. Revenue generation may be explored through partnerships, sponsorships, or premium features in the future, but the primary focus will be on delivering value to users and promoting cybersecurity awareness.
 
+## Example:
+![image](https://github.com/ClemEsaipProject/phishingdataviz/assets/144778367/d71d2cd0-c492-4404-a6e4-8dcc4bbc692e)
+*real site* 
+
+ 
+![image](https://github.com/ClemEsaipProject/phishingdataviz/assets/144778367/b09dd075-6c4e-41f9-88e2-f1e1b59c4b82)
+~~fake site~~
