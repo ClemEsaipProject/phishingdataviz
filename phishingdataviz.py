@@ -1,16 +1,12 @@
 import streamlit as st
-import requests
+from functions import get_data, get_coordinates,geolocator,get_url_report_virustotal,scan_url_virustotal,base_url,base_email,country_code_url,plot_virustotal_data
 from streamlit_keplergl import keplergl_static
 from keplergl import KeplerGl
-from geopy.geocoders import Nominatim
 import pandas as pd
 import json
 
-key = "xPMrDOlGT6xmGKihu4RQpNXBiDFTauny"
-base_url = "https://www.ipqualityscore.com/api/json/url/" + key + "/{}"
-base_email= "https://www.ipqualityscore.com/api/json/email/"+key+"/{}"
-geolocator = Nominatim(user_agent="my_app")
-country_code_url="https://www.ipqualityscore.com/api/json/country/list"
+
+
 
 about_template = """
 <div>
@@ -22,21 +18,11 @@ about_template = """
 """
 
 
-def get_data(url):
-    resp = requests.get(url)
-    return resp.json()
 
-
-def get_coordinates(country_code):
-    location = geolocator.geocode(country_code)
-    if location:
-        return location.latitude, location.longitude
-    else:
-        return None, None
 
 
 def main():
-    menu = ["Home","Email","IP", "About"]
+    menu = ["Home","Email","VirusTotal", "About"]
     choise = st.sidebar.selectbox("Menu", menu)
 
     st.title("Phishing DATA Visualisation")
@@ -48,7 +34,7 @@ def main():
             nav1, nav2 = st.columns([2, 1])
 
             with nav1:
-                search_url = st.text_input("enter url")
+                search_url = st.text_input("enter url for IpQualityScore")
             with nav2:
                 st.text("search")
                 submit_search = st.form_submit_button(label="Search")
@@ -67,6 +53,9 @@ def main():
                 # datas = pd.json_normalize(data)
                 st.sidebar.write(data)
                 # st.sidebar.write(data_c)
+                vt_scan_result = scan_url_virustotal(search_url)
+                if vt_scan_result.get('scan_id'):
+                    vt_report = get_url_report_virustotal(vt_scan_result.get('scan_id'))
 
                 if data:
                     # Récupération des valeurs des clés
@@ -74,16 +63,34 @@ def main():
                     spam = data.get("spamming", False)
                     malware = data.get("malware", False)
                     phishing = data.get("phishing", False)
-                    suspicious = data.get("suspicious", False)
-                    
+                    suspicious = data.get("suspicious", False)                 
 
-                    
+    
                     # Affichage des valeurs dans Streamlit
                     st.write("DNS : ", dns_valid)
                     st.write("spamming :", spam)
                     st.write("malware :", malware)
                     st.write("phishing :", phishing)
                     st.write("suspicious :", suspicious)
+                
+                  # Display VirusTotal Data
+                if vt_report:
+                    st.write("VirusTotal Data")
+                    for scan in vt_report.get('scans', {}):
+                        result = vt_report['scans'][scan]['result']
+                        st.sidebar.write(f"{scan}: {result}")
+
+            # Cross-data analysis
+                if data and vt_report:
+                    st.write("Cross-data Analysis")
+                    vt_malicious = any(scan['detected'] for scan in vt_report.get('scans', {}).values())
+                    if malware or vt_malicious:
+                        st.write("This URL is reported as malware by one or both services.")
+                    if phishing or vt_report.get('positives', 0) > 0:
+                        st.write("This URL is reported as phishing by one or both services.")
+                    if suspicious:
+                        st.write("IPQualityScore indicates this URL is suspicious.")
+
                     
 
                     
@@ -182,19 +189,31 @@ def main():
                 st.sidebar.write(data)
                 # st.sidebar.write(data_c)
 
-    elif choise == "IP":
-        st.subheader("IP")
+    elif choise == "VirusTotal":
+        st.subheader("VirusTotal")
 
         with st.form(key="searchform"):
             nav1, nav2 = st.columns([2, 1])
 
             with nav1:
-                search_url = st.text_input("enter IP address")
+                search_url = st.text_input("Enter URL for VirusTotal scan")
             with nav2:
-                st.text("search")
+                st.text("Search")
                 submit_search = st.form_submit_button(label="Search")
 
-        st.success("you searched for {} ".format(search_url))
+        st.success("You searched for {}".format(search_url))
+
+        if submit_search:
+            # VirusTotal Data
+            vt_scan_result = scan_url_virustotal(search_url)
+            st.write("VirusTotal Scan Result:", vt_scan_result)
+
+            if vt_scan_result.get('scan_id'):
+                vt_report = get_url_report_virustotal(vt_scan_result.get('scan_id'))
+                st.write("VirusTotal URL Report:", vt_report)
+
+                plt = plot_virustotal_data(vt_report)
+                st.pyplot(plt)
 
 
     else:
