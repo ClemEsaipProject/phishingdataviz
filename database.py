@@ -93,6 +93,7 @@ def get_stats() -> dict:
 
 
 def delete_scan(scan_id: int):
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
     conn.commit()
@@ -100,6 +101,7 @@ def delete_scan(scan_id: int):
 
 
 def clear_all():
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM scans")
     conn.commit()

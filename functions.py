@@ -1,15 +1,12 @@
 import os
 import re
-import ssl
+import ssl as ssl_lib
 import time
 import base64
 import jellyfish
 import requests
 import socket
-import ssl as ssl_lib
-import matplotlib.pyplot as plt
-import pandas as pd
-from urllib.parse import urlparse, urlencode, quote
+from urllib.parse import urlparse, quote
 from geopy.geocoders import Nominatim
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
@@ -39,7 +36,7 @@ class TLSAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
         ctx = create_urllib3_context()
         ctx.set_ciphers("DEFAULT")
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.minimum_version = ssl_lib.TLSVersion.TLSv1_2
         kwargs["ssl_context"] = ctx
         super().init_poolmanager(*args, **kwargs)
 
@@ -61,8 +58,15 @@ def build_iq_url(base: str, target: str) -> str:
     return url
 
 
+def _redact_url(url: str) -> str:
+    """Masque la clé API dans l'URL avant de loguer."""
+    if KEY_IQ and KEY_IQ in url:
+        return url.replace(KEY_IQ, "***")
+    return url
+
+
 def get_data(url: str) -> dict:
-    log.info(f"GET {url}")
+    log.info(f"GET {_redact_url(url)}")
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code == 404:
@@ -106,8 +110,6 @@ def get_coordinates(country_code: str):
 # VirusTotal API v3
 # =============================================================
 
-import virustotal_python
-
 def scan_url_virustotal(url: str) -> dict:
     log.info(f"VT scan soumis : {url}")
     try:
@@ -130,21 +132,25 @@ def get_url_report_virustotal(
     url_id   = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
     log.info(f"VT polling pour : {url}")
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            with virustotal_python.Virustotal(KEY_VT) as vtotal:
-                resp  = vtotal.request(f"urls/{url_id}")
-                stats = resp.data.get("attributes", {}).get("last_analysis_stats")
-                if stats is not None:
-                    log.info(f"VT rapport recu apres {attempt} tentative(s)")
-                    return {"data": resp.data}
-                log.debug(f"VT tentative {attempt}/{max_retries} - en attente...")
-                time.sleep(interval)
-        except Exception as e:
-            log.error(f"VT polling erreur tentative {attempt} : {e}")
-            if attempt == max_retries:
-                return {"error": str(e)[:120]}
-            time.sleep(interval)
+    try:
+        with virustotal_python.Virustotal(KEY_VT) as vtotal:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp  = vtotal.request(f"urls/{url_id}")
+                    stats = resp.data.get("attributes", {}).get("last_analysis_stats")
+                    if stats is not None:
+                        log.info(f"VT rapport recu apres {attempt} tentative(s)")
+                        return {"data": resp.data}
+                    log.debug(f"VT tentative {attempt}/{max_retries} - en attente...")
+                    time.sleep(interval)
+                except Exception as e:
+                    log.error(f"VT polling erreur tentative {attempt} : {e}")
+                    if attempt == max_retries:
+                        return {"error": str(e)[:120]}
+                    time.sleep(interval)
+    except Exception as e:
+        log.error(f"VT session erreur : {e}")
+        return {"error": str(e)[:120]}
 
     log.warning("VT rapport indisponible apres max retries")
     return {}
@@ -245,23 +251,22 @@ def check_ssl(url: str) -> dict:
         if not hostname:
             return {"valid": False, "error": "Hostname invalide"}
 
-        ctx  = ssl_lib.create_default_context()
-        conn = ctx.wrap_socket(
-            socket.socket(socket.AF_INET),
-            server_hostname=hostname
-        )
+        ctx = ssl_lib.create_default_context()
+        addr_info = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+        af, socktype, proto, _, sockaddr = addr_info[0]
+        conn = ctx.wrap_socket(socket.socket(af, socktype, proto), server_hostname=hostname)
         conn.settimeout(8)
-        conn.connect((hostname, 443))
+        conn.connect(sockaddr)
         cert      = conn.getpeercert()
         conn.close()
 
         not_after  = cert.get("notAfter",  "")
         not_before = cert.get("notBefore", "")
 
-        from datetime import datetime
+        from datetime import datetime, timezone
         expiry    = datetime.strptime(not_after,  "%b %d %H:%M:%S %Y %Z")
         issued    = datetime.strptime(not_before, "%b %d %H:%M:%S %Y %Z")
-        days_left = (expiry - datetime.utcnow()).days
+        days_left = (expiry - datetime.now(timezone.utc).replace(tzinfo=None)).days
 
         issuer  = dict(x[0] for x in cert.get("issuer",  []))
         subject = dict(x[0] for x in cert.get("subject", []))
@@ -333,8 +338,7 @@ def get_redirect_chain(url: str, max_hops: int = 10) -> list[dict]:
                 current,
                 headers=headers,
                 allow_redirects=False,
-                timeout=8,
-                verify=False
+                timeout=8
             )
 
             domain   = urlparse(current).netloc

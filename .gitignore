@@ -56,6 +56,12 @@ scans.db
 *.code-workspace
 
 # =========================
+# Claude Code
+# =========================
+.claude/
+CLAUDE.md
+
+# =========================
 # Dev Container
 # =========================
 .devcontainer/
