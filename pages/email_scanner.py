@@ -1,6 +1,6 @@
 import streamlit as st
 import plotly.graph_objects as go
-from functions import get_data, build_iq_url, base_email
+from functions import get_data, build_iq_url, base_email, check_email_auth
 
 DARK = "plotly_dark"
 
@@ -113,6 +113,73 @@ def render():
         st.markdown(f"**Domaine :** `{domain}`")
         st.markdown(f"**Spam Trap Score :** `{spam_trap}`")
         st.markdown(f"**Statut :** {'Risque eleve' if fraud_score >= 75 else 'Acceptable'}")
+
+    # ── SPF / DKIM / DMARC (Tier 1) ────────────────────────────────────────
+    st.divider()
+    st.markdown("#### Authentification email (SPF · DKIM · DMARC)")
+    st.caption("Vérifie les enregistrements DNS d'authentification du domaine expéditeur.")
+
+    with st.spinner("Vérification SPF / DKIM / DMARC…"):
+        auth = check_email_auth(domain)
+
+    if "error" in auth:
+        st.warning(auth["error"])
+    else:
+        score_auth = auth["auth_score"]
+        risk_auth  = auth["risk"]
+        auth_status = "ok" if risk_auth == "ok" else ("warn" if risk_auth == "warn" else "danger")
+
+        ca1, ca2, ca3, ca4 = st.columns(4)
+        with ca1:
+            st.markdown(
+                kpi("Score auth", f"{score_auth}/3", auth_status),
+                unsafe_allow_html=True,
+            )
+
+        # SPF
+        spf_val = auth.get("spf", "absent")
+        spf_ok  = spf_val not in ("absent", None)
+        with ca2:
+            st.markdown(
+                kpi("SPF", "✓ Présent" if spf_ok else "✗ Absent",
+                    "ok" if spf_ok else "danger"),
+                unsafe_allow_html=True,
+            )
+
+        # DMARC
+        dmarc_val = auth.get("dmarc", "absent")
+        dmarc_ok  = dmarc_val not in ("absent", None)
+        with ca3:
+            st.markdown(
+                kpi("DMARC", "✓ Présent" if dmarc_ok else "✗ Absent",
+                    "ok" if dmarc_ok else "danger"),
+                unsafe_allow_html=True,
+            )
+
+        # DKIM
+        dkim_val = auth.get("dkim", "absent")
+        dkim_ok  = dkim_val != "absent"
+        with ca4:
+            st.markdown(
+                kpi("DKIM", "✓ Présent" if dkim_ok else "✗ Absent",
+                    "ok" if dkim_ok else "warn"),
+                unsafe_allow_html=True,
+            )
+
+        if risk_auth == "danger":
+            st.error(
+                "**Aucun mécanisme d'authentification détecté.** "
+                "Ce domaine est vulnérable à l'usurpation d'identité (spoofing)."
+            )
+        elif risk_auth == "warn":
+            st.warning("Authentification partielle — certains mécanismes sont manquants.")
+        else:
+            st.success("SPF, DKIM et DMARC sont configurés — authentification complète.")
+
+        with st.expander("Détails des enregistrements DNS"):
+            st.markdown(f"**SPF :** `{spf_val}`")
+            st.markdown(f"**DMARC :** `{dmarc_val}`")
+            st.markdown(f"**DKIM :** `{dkim_val}`")
 
 
 render()

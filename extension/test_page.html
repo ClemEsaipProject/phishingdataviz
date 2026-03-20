@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>PhishGuard — Test Page</title>
+  <style>
+    :root {
+      --bg:       #0e1117;
+      --surface:  #1a1d2e;
+      --border:   #2a2d3e;
+      --text:     #e0e0e0;
+      --muted:    #8b95a5;
+      --cyan:     #00d4ff;
+      --red:      #ff4b4b;
+      --orange:   #ffa500;
+      --yellow:   #e6c200;
+      --green:    #00cc88;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      padding: 40px 20px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header { margin-bottom: 40px; }
+    header h1 { font-size: 26px; color: var(--cyan); margin-bottom: 6px; }
+    header p  { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+    .instructions {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--cyan);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 36px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .instructions strong { color: var(--cyan); }
+
+    section { margin-bottom: 36px; }
+
+    section h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .link-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 10px;
+    }
+
+    .link-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    .link-card .label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .link-card a {
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .link-card .expected {
+      font-size: 11px;
+      margin-top: 6px;
+      color: var(--muted);
+    }
+    .expected .lvl {
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .lvl.SAFE     { background: #1a2e1a; color: var(--green);  }
+    .lvl.LOW      { background: #1a2535; color: #99ccff;       }
+    .lvl.MEDIUM   { background: #2e2800; color: var(--yellow); }
+    .lvl.HIGH     { background: #2e1800; color: var(--orange); }
+    .lvl.CRITICAL { background: #2e0000; color: var(--red);    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 36px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.SAFE     { background: var(--green);  }
+    .dot.LOW      { background: #99ccff;       }
+    .dot.MEDIUM   { background: var(--yellow); }
+    .dot.HIGH     { background: var(--orange); }
+    .dot.CRITICAL { background: var(--red);    }
+
+    .status-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #api-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #555;
+    }
+    #api-dot.online  { background: var(--green); }
+    #api-dot.offline { background: var(--red);   }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PhishGuard — Page de test</h1>
+  <p>
+    Chaque lien ci-dessous représente un cas de test pour l'extension PhishGuard.<br>
+    L'extension doit colorier les liens selon leur niveau de risque détecté.
+  </p>
+</header>
+
+<div class="instructions">
+  <strong>Prérequis :</strong><br>
+  1. Backend Flask actif → <code>python api.py</code> (port 5050)<br>
+  2. Extension chargée dans Chrome → <code>chrome://extensions</code> · mode développeur · "Charger l'extension non empaquetée" → dossier <code>extension/</code><br>
+  3. Ouvrir cette page dans Chrome — les liens seront coloriés automatiquement après quelques secondes.<br>
+  <br>
+  <strong>Note :</strong> les URLs pointent vers des domaines fictifs ou réservés — ne pas cliquer, le but est uniquement de tester la détection.
+</div>
+
+
+<!-- ── SAFE ──────────────────────────────────────────────────────────────── -->
+<section>
+  <h2>SAFE — URLs légitimes (bleu par défaut)</h2>
+  <div class="link-grid">
+
+    <div class="link-card">
+      <div class="label">Site institutionnel HTTPS</div>
+      <a href="https://www.google.com">https://www.google.com</a>
+      <div class="expected"><span class="lvl SAFE">SAFE</span> Aucun signal détecté</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">GitHub officiel</div>
+      <a href="https://github.com/torvalds/linux">https://github.com/torvalds/linux</a>
+      <div class="expected"><span class="lvl SAFE">SAFE</span> Domaine connu, HTTPS, rank élevé</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Wikipedia</div>
+      <a href="https://fr.wikipedia.org/wiki/Phishing">https://fr.wikipedia.org/wiki/Phishing</a>
+      <div class="expected"><span class="lvl SAFE">SAFE</span> TLD standard, pas de signal</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Streamlit docs</div>
+      <a href="https://docs.streamlit.io">https://docs.streamlit.io</a>
+      <div class="expected"><span class="lvl SAFE">SAFE</span> Sous-domaine légitime</div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── LOW ───────────────────────────────────────────────────────────────── -->
+<section>
+  <h2>LOW — Signal faible (bleu clair)</h2>
+  <div class="link-grid">
+
+    <div class="link-card">
+      <div class="label">URL longue sans autre signal</div>
+      <a href="https://www.example-legitimate-website.com/some/very/long/path/to/a/resource/that/is/actually/fine">
+        https://www.example-legitimate.com/some/very/long/path/…
+      </a>
+      <div class="expected"><span class="lvl LOW">LOW</span> Longueur URL → score lexical faible</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">HTTP simple (pas de HTTPS)</div>
+      <a href="http://monsite-perso.fr/blog">http://monsite-perso.fr/blog</a>
+      <div class="expected"><span class="lvl LOW">LOW</span> Absence HTTPS +15 pts lexical</div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── MEDIUM ────────────────────────────────────────────────────────────── -->
+<section>
+  <h2>MEDIUM — Signal modéré (jaune)</h2>
+  <div class="link-grid">
+
+    <div class="link-card">
+      <div class="label">Mot-clé "login" + HTTP</div>
+      <a href="http://login.monbanque.fr/verify">http://login.monbanque.fr/verify</a>
+      <div class="expected"><span class="lvl MEDIUM">MEDIUM</span> login + verify + HTTP</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Sous-domaines multiples</div>
+      <a href="https://secure.account.update.service.exemple.com">
+        https://secure.account.update.service.exemple.com
+      </a>
+      <div class="expected"><span class="lvl MEDIUM">MEDIUM</span> 4 sous-domaines + mots suspects</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">TLD .xyz + mot-clé</div>
+      <a href="http://bank-secure.xyz/account/confirm">http://bank-secure.xyz/account/confirm</a>
+      <div class="expected"><span class="lvl MEDIUM">MEDIUM</span> TLD inhabituel + confirm + bank</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">URL avec caractères spéciaux</div>
+      <a href="https://ma~banque--securite.com/signin~verify">
+        https://ma~banque--securite.com/signin~verify
+      </a>
+      <div class="expected"><span class="lvl MEDIUM">MEDIUM</span> Chars spéciaux + mots suspects</div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── HIGH ──────────────────────────────────────────────────────────────── -->
+<section>
+  <h2>HIGH — Signal fort (orange)</h2>
+  <div class="link-grid">
+
+    <div class="link-card">
+      <div class="label">IP directe dans l'URL</div>
+      <a href="http://192.168.1.254/admin/login">http://192.168.1.254/admin/login</a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> IP directe +35 pts · login</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Caractère @ (redirection masquée)</div>
+      <a href="https://www.google.com@evil-phishing.net/steal">
+        https://www.google.com@evil-phishing.net/steal
+      </a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> @ masque le vrai domaine</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Typosquatting — gooogle</div>
+      <a href="https://www.gooogle.com/account/signin">https://www.gooogle.com/account/signin</a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> Levenshtein(gooogle, google) = 1</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Typosquatting — paypa1</div>
+      <a href="https://paypa1.com/login/secure">https://paypa1.com/login/secure</a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> Levenshtein(paypa1, paypal) = 1</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Namespace privé — collision AD (.corp)</div>
+      <a href="http://portail.authentification.corp/admin">
+        http://portail.authentification.corp/admin
+      </a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> .corp fuite namespace + plancher 50</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Namespace privé (.internal — réservé ICANN 2024)</div>
+      <a href="https://vpn.entreprise.internal/connect">https://vpn.entreprise.internal/connect</a>
+      <div class="expected"><span class="lvl HIGH">HIGH</span> .internal officiellement réservé</div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── CRITICAL ───────────────────────────────────────────────────────────── -->
+<section>
+  <h2>CRITICAL — Menace confirmée (rouge · notification)</h2>
+  <div class="link-grid">
+
+    <div class="link-card">
+      <div class="label">Namespace réservé RFC 2606 — .localhost</div>
+      <a href="http://paypal.localhost/signin/verify">http://paypal.localhost/signin/verify</a>
+      <div class="expected"><span class="lvl CRITICAL">CRITICAL</span> RFC 2606 + typosquatting paypal</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Namespace réservé RFC 2606 — .test</div>
+      <a href="https://secure-banking.test/account/update">
+        https://secure-banking.test/account/update
+      </a>
+      <div class="expected"><span class="lvl CRITICAL">CRITICAL</span> .test non-résolvable + mots suspects</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Infrastructure DNS — .arpa (variante 2025)</div>
+      <a href="http://login.paypal.com.phishing.in-addr.arpa/verify">
+        http://login.paypal.com.phishing.in-addr.arpa/verify
+      </a>
+      <div class="expected"><span class="lvl CRITICAL">CRITICAL</span> .arpa jamais légitime + plancher 80</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">TLD extension de fichier — .zip</div>
+      <a href="https://document-fiscal-2024.zip/telecharger">
+        https://document-fiscal-2024.zip/telecharger
+      </a>
+      <div class="expected"><span class="lvl CRITICAL">CRITICAL</span> .zip imite une archive</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">TLD extension de fichier — .mov</div>
+      <a href="https://video-confidentielle.mov/preview">
+        https://video-confidentielle.mov/preview
+      </a>
+      <div class="expected"><span class="lvl CRITICAL">CRITICAL</span> .mov imite fichier vidéo</div>
+    </div>
+
+    <div class="link-card">
+      <div class="label">Combinaison maximale de signaux</div>
+      <a href="http://192.168.0.1@paypall.test/account/signin/verify/update/credential">
+        http://192.168.0.1@paypall.test/account/signin/…
+      </a>
+      <div class="expected">
+        <span class="lvl CRITICAL">CRITICAL</span>
+        IP + @ + .test + typo + mots suspects
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── Légende ────────────────────────────────────────────────────────────── -->
+<div class="legend">
+  <span style="color:var(--muted);font-size:12px;margin-right:4px;">Niveaux attendus :</span>
+  <div class="legend-item"><div class="dot SAFE"></div> SAFE — inchangé</div>
+  <div class="legend-item"><div class="dot LOW"></div> LOW — bleu clair</div>
+  <div class="legend-item"><div class="dot MEDIUM"></div> MEDIUM — jaune</div>
+  <div class="legend-item"><div class="dot HIGH"></div> HIGH — orange</div>
+  <div class="legend-item"><div class="dot CRITICAL"></div> CRITICAL — rouge · notification système</div>
+</div>
+
+
+<!-- ── Barre de statut ────────────────────────────────────────────────────── -->
+<div class="status-bar">
+  <div id="api-dot"></div>
+  <span id="api-label">Vérification backend…</span>
+  <span style="margin-left:auto;color:var(--border)">PhishGuard Test Page · api :5050</span>
+</div>
+
+<script>
+  // Vérifie si l'API Flask est joignable
+  async function checkApi() {
+    try {
+      const r = await fetch("http://127.0.0.1:5050/api/health");
+      if (r.ok) {
+        document.getElementById("api-dot").className   = "online";
+        document.getElementById("api-label").textContent = "Backend en ligne — analyse active";
+      } else throw new Error();
+    } catch {
+      document.getElementById("api-dot").className   = "offline";
+      document.getElementById("api-label").textContent = "Backend hors ligne — lancez : python api.py";
+    }
+  }
+  checkApi();
+  setInterval(checkApi, 10000);
+</script>
+
+</body>
+</html>

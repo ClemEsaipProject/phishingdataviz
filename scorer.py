@@ -1,16 +1,31 @@
 """
-scorer.py - Score Global fusionné (Sprint 5 + countermeasure namespace)
+scorer.py - Score Global fusionné (Tier 1 update)
 
 Signaux combinés :
   - IPQualityScore risk_score
   - Analyse lexicale
   - Typosquatting (Levenshtein)
   - VirusTotal détections (optionnel)
-  - Reserved Namespace (bonus malus, surcharge forcée si danger)
+  - Reserved Namespace
+  - Âge du domaine (Tier 1 — jeune domaine = suspect)
+  - Homoglyphes / IDN / Leetspeak (Tier 1)
 """
 
 # Bonus de score selon le risque du namespace détecté
 _NAMESPACE_BONUS = {"danger": 40, "warn": 20, "ok": 0}
+
+
+def _age_penalty(age_days: int | None) -> int:
+    """Malus si le domaine est récent (signal fort de phishing)."""
+    if age_days is None:
+        return 0
+    if age_days < 30:
+        return 35
+    if age_days < 90:
+        return 20
+    if age_days < 180:
+        return 10
+    return 0
 
 
 def compute_global_score(
@@ -19,17 +34,26 @@ def compute_global_score(
     typos:      list,
     vt_stats:   dict | None = None,
     namespace:  dict | None = None,
+    domain_age: int | None = None,
+    homoglyphs: dict | None = None,
 ) -> dict:
     """
     Calcule un score global fusionné.
 
-    Pondérations sans VT : IQ 55%, Lexical 30%, Typo 15%
-    Pondérations avec VT : IQ 40%, Lexical 20%, VT 25%, Typo 15%
+    Pondérations sans VT : IQ 50%, Lexical 27%, Typo 13%, NS 10%
+    Pondérations avec VT : IQ 38%, Lexical 19%, VT 23%, Typo 12%, NS 8%
 
-    Surcharge forcée :
-      - phishing ou malware confirmé         → score >= 75
-      - namespace réservé catégorie danger   → score >= 80
-      - namespace réservé catégorie warn     → score >= 50
+    Bonus additifs (hors pondération) :
+      - Âge domaine < 30j  → +35 pts
+      - Âge domaine < 90j  → +20 pts
+      - Âge domaine < 180j → +10 pts
+      - Homoglyph détecté  → +25 pts
+
+    Planchers forcés :
+      - phishing ou malware confirmé       → score >= 75
+      - namespace réservé danger           → score >= 80
+      - namespace réservé warn             → score >= 50
+      - homoglyph avec marque identifiée   → score >= 60
     """
     iq_score = iq_data.get("risk_score", 0)
     phishing = iq_data.get("phishing",   False)
@@ -38,9 +62,13 @@ def compute_global_score(
     # Typosquatting : 25 pts par correspondance, plafonné à 50
     typo_pts = min(len(typos) * 25, 50)
 
-    # Namespace réservé : malus additionnel brut avant pondération
+    # Namespace réservé
     ns_risk  = namespace.get("risk", "ok") if namespace and namespace.get("flagged") else "ok"
     ns_bonus = _NAMESPACE_BONUS[ns_risk]
+
+    # Âge du domaine et homoglyphes (bonus additifs)
+    age_pts  = _age_penalty(domain_age)
+    homo_pts = 25 if (homoglyphs and homoglyphs.get("flagged")) else 0
 
     if vt_stats:
         total_vt   = sum(vt_stats.values())
@@ -64,6 +92,7 @@ def compute_global_score(
             + ns_bonus  * 0.10
         )
 
+    raw += age_pts + homo_pts
     score = min(round(raw), 100)
 
     # Planchers forcés
@@ -73,6 +102,8 @@ def compute_global_score(
         score = max(score, 80)
     elif ns_risk == "warn":
         score = max(score, 50)
+    if homoglyphs and homoglyphs.get("flagged") and homoglyphs.get("matched_brand"):
+        score = max(score, 60)
 
     level = "danger" if score >= 75 else ("warn" if score >= 40 else "ok")
     label = "Malveillant" if score >= 75 else ("Suspect" if score >= 40 else "Propre")
@@ -85,6 +116,8 @@ def compute_global_score(
         "typo_component":  round(typo_pts),
         "ns_component":    ns_bonus,
         "ns_risk":         ns_risk,
+        "age_component":   age_pts,
+        "homo_component":  homo_pts,
         "has_vt":          vt_stats is not None,
         "level":           level,
         "label":           label,

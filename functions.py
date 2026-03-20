@@ -630,3 +630,249 @@ def get_whois(url: str) -> dict:
     except Exception as e:
         log.error(f"WHOIS erreur inattendue pour {url} : {e}")
         return {"error": str(e)[:120]}
+
+
+# =============================================================
+# Tier 1 — Homoglyph / IDN / Punycode Detection
+# =============================================================
+
+# Confusables : caractère Unicode → équivalent ASCII visuel
+_CONFUSABLES: dict[str, str] = {
+    # Cyrillique
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p",
+    "\u0441": "c", "\u0445": "x", "\u0443": "y", "\u0456": "i",
+    "\u0455": "s", "\u04cf": "l",
+    # Grec
+    "\u03bf": "o", "\u03c1": "p", "\u03b5": "e", "\u03b1": "a",
+    # Leetspeak (chiffres substitués aux lettres)
+    "0": "o", "1": "l", "3": "e", "5": "s",
+}
+
+
+def _normalize_confusables(text: str) -> str:
+    """Remplace les confusables par leurs équivalents ASCII."""
+    return "".join(_CONFUSABLES.get(c, c) for c in text)
+
+
+def detect_homoglyphs(url: str) -> dict:
+    """
+    Détecte les attaques par homoglyphes, IDN (Punycode) et leetspeak.
+
+    Retourne {flagged, method, matched_brand?, decoded?, normalized?}.
+    """
+    try:
+        hostname = urlparse(url).netloc.replace("www.", "").split(":")[0].lower()
+        if not hostname:
+            return {"flagged": False}
+
+        result: dict = {"flagged": False, "hostname": hostname}
+
+        # ── Cas 1 : Punycode / xn-- (IDN) ─────────────────────────────────
+        if "xn--" in hostname:
+            try:
+                decoded = hostname.encode("ascii").decode("idna")
+                result.update({"method": "punycode", "decoded": decoded})
+                domain_part = decoded.split(".")[0]
+                norm = _normalize_confusables(domain_part)
+                for brand in BRANDS:
+                    if jellyfish.levenshtein_distance(norm, brand) <= 1:
+                        result.update({"flagged": True, "matched_brand": brand,
+                                       "normalized": norm})
+                        return result
+                # Punycode sans match exact → suspect quand même
+                result["flagged"] = True
+            except Exception:
+                result.update({"flagged": True, "method": "punycode_malformed"})
+            return result
+
+        # ── Cas 2 : Unicode direct dans le domaine ─────────────────────────
+        if not hostname.isascii():
+            result["method"] = "unicode_direct"
+            domain_part = hostname.split(".")[0]
+            norm = _normalize_confusables(domain_part)
+            result["normalized"] = norm
+            for brand in BRANDS:
+                if jellyfish.levenshtein_distance(norm, brand) <= 1:
+                    result.update({"flagged": True, "matched_brand": brand})
+                    return result
+            result["flagged"] = True
+            return result
+
+        # ── Cas 3 : Leetspeak ASCII (0→o, 1→l, 3→e, 5→s) ─────────────────
+        domain_part = hostname.split(".")[0]
+        if any(c in domain_part for c in "0135"):
+            norm = _normalize_confusables(domain_part)
+            if norm != domain_part:
+                result.update({"method": "leetspeak", "normalized": norm})
+                for brand in BRANDS:
+                    if jellyfish.levenshtein_distance(norm, brand) <= 1:
+                        result.update({"flagged": True, "matched_brand": brand})
+                        return result
+
+        return result
+
+    except Exception as e:
+        log.warning(f"detect_homoglyphs error: {e}")
+        return {"flagged": False}
+
+
+# =============================================================
+# Tier 1 — Domain Age (via données WHOIS)
+# =============================================================
+
+_DATE_FORMATS_AGE = [
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d",
+    "%d-%b-%Y",
+    "%d/%m/%Y",
+    "%Y.%m.%d",
+    "%Y%m%d",
+]
+
+
+def get_domain_age(whois_data: dict) -> int | None:
+    """
+    Calcule l'âge du domaine en jours à partir de creation_date WHOIS.
+    Retourne None si la date est absente ou non parseable.
+    """
+    from datetime import datetime as _dt
+
+    raw = whois_data.get("creation_date")
+    if not raw:
+        return None
+
+    raw_clean = re.sub(r"\.\d+Z?$", "", raw.strip())
+
+    for fmt in _DATE_FORMATS_AGE:
+        try:
+            creation = _dt.strptime(raw_clean, fmt)
+            return max((_dt.now() - creation).days, 0)
+        except ValueError:
+            continue
+
+    # Fallback : extraire YYYY-MM-DD par regex
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw)
+    if m:
+        try:
+            creation = _dt(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return max((_dt.now() - creation).days, 0)
+        except Exception:
+            pass
+
+    log.warning(f"get_domain_age: format de date non reconnu '{raw}'")
+    return None
+
+
+# =============================================================
+# Tier 1 — URL Shortener Resolution
+# =============================================================
+
+SHORTENERS: frozenset[str] = frozenset({
+    "bit.ly", "t.co", "tinyurl.com", "ow.ly", "is.gd", "buff.ly",
+    "short.link", "rb.gy", "cutt.ly", "tiny.cc", "qr.ae",
+    "goo.gl", "lnkd.in", "wp.me", "youtu.be", "dlvr.it",
+    "mcaf.ee", "soo.gd", "snip.ly", "bl.ink", "clk.sh",
+})
+
+
+def is_shorturl(url: str) -> bool:
+    """Retourne True si l'URL provient d'un raccourcisseur connu."""
+    try:
+        host = urlparse(url).netloc.replace("www.", "").lower()
+        return host in SHORTENERS
+    except Exception:
+        return False
+
+
+def resolve_shorturl(url: str) -> dict:
+    """
+    Suit les redirections HTTP pour obtenir la destination finale.
+    Retourne {original, final, hops, changed, error?}.
+    """
+    try:
+        resp = requests.head(
+            url,
+            allow_redirects=True,
+            timeout=8,
+            headers={"User-Agent": "Mozilla/5.0 PhishGuard/1.0"},
+        )
+        final = resp.url
+        hops  = len(resp.history)
+        log.info(f"resolve_shorturl: {url} → {final} ({hops} hop(s))")
+        return {"original": url, "final": final, "hops": hops, "changed": final != url}
+    except Exception as e:
+        log.warning(f"resolve_shorturl error pour {url}: {e}")
+        return {"original": url, "final": url, "hops": 0, "changed": False,
+                "error": str(e)[:80]}
+
+
+# =============================================================
+# Tier 1 — SPF / DKIM / DMARC (Email Authentication)
+# =============================================================
+
+def check_email_auth(domain: str) -> dict:
+    """
+    Vérifie les enregistrements SPF, DMARC et DKIM d'un domaine.
+    Nécessite dnspython. Retourne {spf, dmarc, dkim, auth_score, risk}.
+    """
+    try:
+        import dns.resolver as _dns  # type: ignore
+    except ImportError:
+        return {
+            "error": "dnspython non installé — pip install dnspython",
+            "auth_score": 0,
+            "risk": "unknown",
+        }
+
+    result: dict = {"domain": domain, "spf": None, "dmarc": None, "dkim": None}
+
+    # ── SPF ──────────────────────────────────────────────────────────────────
+    try:
+        for r in _dns.resolve(domain, "TXT"):
+            txt = r.to_text().strip('"')
+            if txt.startswith("v=spf1"):
+                result["spf"] = txt[:140]
+                break
+        if result["spf"] is None:
+            result["spf"] = "absent"
+    except Exception:
+        result["spf"] = "absent"
+
+    # ── DMARC ─────────────────────────────────────────────────────────────────
+    try:
+        for r in _dns.resolve(f"_dmarc.{domain}", "TXT"):
+            txt = r.to_text().strip('"')
+            if "v=DMARC1" in txt:
+                result["dmarc"] = txt[:160]
+                break
+        if result["dmarc"] is None:
+            result["dmarc"] = "absent"
+    except Exception:
+        result["dmarc"] = "absent"
+
+    # ── DKIM (sélecteurs courants) ─────────────────────────────────────────────
+    result["dkim"] = "absent"
+    for sel in ("default", "google", "selector1", "selector2", "mail", "dkim", "k1"):
+        try:
+            for r in _dns.resolve(f"{sel}._domainkey.{domain}", "TXT"):
+                txt = r.to_text().strip('"')
+                if "v=DKIM1" in txt or "k=rsa" in txt or "k=ed25519" in txt:
+                    result["dkim"] = f"présent (sélecteur : {sel})"
+                    break
+            if result["dkim"] != "absent":
+                break
+        except Exception:
+            continue
+
+    # ── Score global d'authentification (0-3) ─────────────────────────────────
+    auth_score = sum([
+        result["spf"]   not in ("absent", None),
+        result["dmarc"] not in ("absent", None),
+        result["dkim"]  != "absent",
+    ])
+    result["auth_score"] = auth_score
+    result["risk"] = "danger" if auth_score == 0 else ("warn" if auth_score <= 1 else "ok")
+    log.info(f"check_email_auth({domain}): score={auth_score}/3")
+    return result

@@ -18,6 +18,9 @@ pg = st.navigation({
     "Analyse": [
         st.Page("pages/history.py", title="Historique", icon=":material/history:"),
     ],
+    "PhishGuard": [
+        st.Page("pages/phishguard.py", title="PhishGuard", icon=":material/extension:"),
+    ],
     "Info": [
         st.Page("pages/about.py", title="About & WHOIS", icon=":material/info:"),
     ]

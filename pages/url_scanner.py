@@ -10,6 +10,11 @@ from functions import (
     detect_typosquatting,
     lexical_analysis,
     detect_reserved_namespace,
+    detect_homoglyphs,
+    is_shorturl,
+    resolve_shorturl,
+    get_domain_age,
+    get_whois,
 )
 from database import save_scan
 from scorer import compute_global_score
@@ -160,8 +165,21 @@ def render():
     if not submitted or not url_input:
         return
 
+    # ── Résolution URL court (Tier 1) ──────────────────────────────────────
+    url_to_scan = url_input
+    short_info  = None
+    if is_shorturl(url_input):
+        with st.spinner("Résolution du lien court…"):
+            short_info = resolve_shorturl(url_input)
+        if short_info.get("changed"):
+            url_to_scan = short_info["final"]
+            st.info(
+                f"🔗 **Lien court résolu** : `{url_input}` "
+                f"→ `{url_to_scan}` ({short_info['hops']} saut(s))"
+            )
+
     with st.spinner("Analyse IPQualityScore en cours..."):
-        data = get_data(build_iq_url(base_url, url_input))
+        data = get_data(build_iq_url(base_url, url_to_scan))
 
     if "error" in data:
         st.error(data["error"])
@@ -193,17 +211,37 @@ def render():
         with col:
             st.markdown(kpi(label, value, status), unsafe_allow_html=True)
 
-    lex       = lexical_analysis(url_input)
-    typos     = detect_typosquatting(url_input)
-    namespace = detect_reserved_namespace(url_input)
-    score     = compute_global_score(data, lex["score"], typos, namespace=namespace)
+    lex        = lexical_analysis(url_to_scan)
+    typos      = detect_typosquatting(url_to_scan)
+    namespace  = detect_reserved_namespace(url_to_scan)
+    homoglyphs = detect_homoglyphs(url_to_scan)
+
+    # Âge du domaine via WHOIS (Tier 1)
+    age_days: int | None = None
+    with st.spinner("Lookup WHOIS (âge du domaine)…"):
+        whois_data = get_whois(url_to_scan)
+        if "error" not in whois_data:
+            age_days = get_domain_age(whois_data)
+
+    score = compute_global_score(
+        data, lex["score"], typos,
+        namespace=namespace,
+        domain_age=age_days,
+        homoglyphs=homoglyphs,
+    )
 
     score_color = {"danger": "#ff4b4b", "warn": "#ffa500", "ok": "#00cc88"}[score["level"]]
+    age_label = (
+        f"{age_days}j" if age_days is not None
+        else "inconnu"
+    )
     breakdown = (
         f"IQ&nbsp;{score['iq_component']} · "
         f"Lexical&nbsp;{score['lex_component']} · "
         f"Typo&nbsp;{score['typo_component']} · "
-        f"Namespace&nbsp;{score['ns_component']}"
+        f"NS&nbsp;{score['ns_component']} · "
+        f"Âge&nbsp;{age_label} · "
+        f"IDN&nbsp;{score['homo_component']}"
         + (f" · VT&nbsp;{score['vt_component']}" if score["has_vt"] else "")
     )
     st.markdown(
@@ -232,11 +270,13 @@ def render():
 
     st.divider()
 
-    ns_tab_label = "🔴 Namespace" if namespace["risk"] == "danger" \
+    ns_tab_label   = "🔴 Namespace" if namespace["risk"] == "danger" \
         else ("🟡 Namespace" if namespace["risk"] == "warn" else "Namespace")
+    homo_tab_label = "🔴 IDN/Homoglyphes" if homoglyphs.get("flagged") else "IDN/Homoglyphes"
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Threat Radar", "Analyse Lexicale", "Typosquatting", ns_tab_label]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Threat Radar", "Analyse Lexicale", "Typosquatting",
+         ns_tab_label, homo_tab_label]
     )
 
     with tab1:
@@ -345,7 +385,88 @@ def render():
                 "les campagnes de phishing exploitant l'espace de noms réservé."
             )
 
-    save_scan(url_input, "IPQualityScore", data)
+    with tab5:
+        st.markdown("#### Détection Homoglyphes / IDN / Leetspeak")
+        st.caption(
+            "Identifie les domaines utilisant des caractères Unicode confusables (Cyrillique, Grec), "
+            "l'encodage Punycode (xn--) ou des substitutions de chiffres (0→o, 1→l…) "
+            "pour usurper des marques connues."
+        )
+        if not homoglyphs.get("flagged"):
+            st.success("Aucun homoglyph, IDN ou leetspeak suspect détecté.")
+            st.markdown(
+                f"Hostname analysé : `{homoglyphs.get('hostname', url_to_scan)}`"
+            )
+        else:
+            method_labels = {
+                "punycode":          "Encodage Punycode (IDN — xn--)",
+                "punycode_malformed": "Punycode malformé",
+                "unicode_direct":    "Unicode direct dans le domaine",
+                "leetspeak":         "Substitution leetspeak (chiffres)",
+            }
+            method = homoglyphs.get("method", "inconnu")
+            st.error(
+                f"**Attaque par homoglyph détectée** — "
+                f"{method_labels.get(method, method)}"
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(
+                    kpi("Méthode", method_labels.get(method, method), "danger"),
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                brand = homoglyphs.get("matched_brand", "—")
+                st.markdown(
+                    kpi("Marque ciblée", brand.upper() if brand != "—" else brand, "danger"),
+                    unsafe_allow_html=True,
+                )
+            st.divider()
+            st.markdown("##### Détails")
+            if homoglyphs.get("decoded"):
+                st.markdown(f"**Décodé (Punycode) :** `{homoglyphs['decoded']}`")
+            if homoglyphs.get("normalized"):
+                st.markdown(f"**Normalisé (confusables → ASCII) :** `{homoglyphs['normalized']}`")
+            st.markdown(f"**Hostname original :** `{homoglyphs.get('hostname', '')}`")
+            if homoglyphs.get("matched_brand"):
+                st.markdown(
+                    f"> **Ce domaine imite visuellement `{homoglyphs['matched_brand']}`** "
+                    f"grâce à des caractères d'apparence identique mais encodés différemment. "
+                    f"C'est une technique de phishing avancée (attaque homographique)."
+                )
+
+    # ── Âge du domaine (Tier 1) ────────────────────────────────────────────
+    if age_days is not None or "error" in whois_data:
+        with st.expander("Âge du domaine (WHOIS)", expanded=age_days is not None and age_days < 180):
+            if age_days is not None:
+                age_status = (
+                    "danger" if age_days < 30
+                    else ("warn" if age_days < 180 else "ok")
+                )
+                age_human = (
+                    f"{age_days} jours"  if age_days < 365
+                    else f"{age_days // 365} an(s) {age_days % 365} j"
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown(
+                        kpi("Âge du domaine", age_human, age_status),
+                        unsafe_allow_html=True,
+                    )
+                with c2:
+                    reg = whois_data.get("registrar", "N/A")
+                    st.markdown(kpi("Registrar", reg[:30] if reg != "N/A" else reg, ""),
+                                unsafe_allow_html=True)
+                if age_days < 30:
+                    st.error("Domaine très récent (< 30 jours) — signal fort de phishing.")
+                elif age_days < 180:
+                    st.warning("Domaine récent (< 6 mois) — signal modéré.")
+                else:
+                    st.success("Domaine établi (> 6 mois) — signal neutre.")
+            else:
+                st.warning(f"WHOIS indisponible : {whois_data.get('error', 'inconnu')}")
+
+    save_scan(url_to_scan, "IPQualityScore", data)
 
 
 render()
