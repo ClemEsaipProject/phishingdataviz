@@ -211,20 +211,20 @@ def render():
     with left:
         st.plotly_chart(
             risk_timeline(df),
-            use_container_width=True,
+            width="stretch",
             key="hist_timeline"
         )
     with right:
         st.plotly_chart(
             threat_distribution(df),
-            use_container_width=True,
+            width="stretch",
             key="hist_distribution"
         )
 
     if df["country"].str.len().gt(0).any():
         fig_map = country_map(df)
     if fig_map:
-        st.plotly_chart(fig_map, use_container_width=True, key="hist_map")
+        st.plotly_chart(fig_map, width="stretch", key="hist_map")
 
 
     st.divider()
@@ -256,7 +256,7 @@ def render():
             "suspicious": "Suspect",
             "country":    "Pays"
         }),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key="hist_table"
     )

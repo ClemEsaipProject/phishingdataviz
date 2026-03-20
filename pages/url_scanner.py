@@ -8,9 +8,11 @@ from functions import (
     get_coordinates,
     base_url,
     detect_typosquatting,
-    lexical_analysis
+    lexical_analysis,
+    detect_reserved_namespace,
 )
 from database import save_scan
+from scorer import compute_global_score
 
 DARK = "plotly_dark"
 
@@ -191,19 +193,58 @@ def render():
         with col:
             st.markdown(kpi(label, value, status), unsafe_allow_html=True)
 
+    lex       = lexical_analysis(url_input)
+    typos     = detect_typosquatting(url_input)
+    namespace = detect_reserved_namespace(url_input)
+    score     = compute_global_score(data, lex["score"], typos, namespace=namespace)
+
+    score_color = {"danger": "#ff4b4b", "warn": "#ffa500", "ok": "#00cc88"}[score["level"]]
+    breakdown = (
+        f"IQ&nbsp;{score['iq_component']} · "
+        f"Lexical&nbsp;{score['lex_component']} · "
+        f"Typo&nbsp;{score['typo_component']} · "
+        f"Namespace&nbsp;{score['ns_component']}"
+        + (f" · VT&nbsp;{score['vt_component']}" if score["has_vt"] else "")
+    )
+    st.markdown(
+        f"""
+        <div style="background:#1a1d2e;border:2px solid {score_color};border-radius:14px;
+                    padding:18px 24px;margin:14px 0;display:flex;
+                    align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#8b95a5;font-size:13px;margin-bottom:4px;">
+                    Score Global Fusionné
+                </div>
+                <div style="color:{score_color};font-size:42px;font-weight:800;
+                            line-height:1;">
+                    {score['global_score']}<span style="font-size:20px;color:#8b95a5;">/100</span>
+                </div>
+                <div style="color:#8b95a5;font-size:12px;margin-top:6px;">{breakdown}</div>
+            </div>
+            <div style="color:{score_color};font-size:26px;font-weight:700;
+                        letter-spacing:1px;">
+                {score['label'].upper()}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.divider()
 
-    lex   = lexical_analysis(url_input)
-    typos = detect_typosquatting(url_input)
+    ns_tab_label = "🔴 Namespace" if namespace["risk"] == "danger" \
+        else ("🟡 Namespace" if namespace["risk"] == "warn" else "Namespace")
 
-    tab1, tab2, tab3 = st.tabs(["Threat Radar", "Analyse Lexicale", "Typosquatting"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Threat Radar", "Analyse Lexicale", "Typosquatting", ns_tab_label]
+    )
 
     with tab1:
         left, right = st.columns([1, 1])
         with left:
             st.plotly_chart(
                 radar_chart(data),
-                use_container_width=True,
+                width="stretch",
                 key="url_radar_threat"
             )
             st.markdown(
@@ -227,7 +268,7 @@ def render():
         with l2:
             st.plotly_chart(
                 lexical_chart(lex),
-                use_container_width=True,
+                width="stretch",
                 key="url_radar_lexical"
             )
         with r2:
@@ -266,6 +307,43 @@ def render():
                     f"(distance Levenshtein : `{t['distance']}` — "
                     f":{color}[Risque {t['risk']}])"
                 )
+
+    with tab4:
+        st.markdown("#### Détection de namespace réservé")
+        st.caption(
+            "Contre-mesure contre les campagnes exploitant des TLDs réservés "
+            "(RFC 2606, .arpa, extensions de fichiers, TLDs privés d'entreprise)."
+        )
+        if not namespace["flagged"]:
+            st.success(
+                f"TLD **`.{namespace['tld']}`** — aucun namespace réservé détecté."
+            )
+        else:
+            risk_fn = st.error if namespace["risk"] == "danger" else st.warning
+            risk_fn(
+                f"**TLD `.{namespace['tld']}`** — {namespace['category_label']}\n\n"
+                f"{namespace['explanation']}"
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                risk_status = "danger" if namespace["risk"] == "danger" else "warn"
+                st.markdown(
+                    kpi("Niveau de risque", namespace["risk"].upper(), risk_status),
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                st.markdown(
+                    kpi("Catégorie", namespace["category_label"], risk_status),
+                    unsafe_allow_html=True,
+                )
+            st.divider()
+            st.markdown("##### Pourquoi ce TLD est-il suspect ?")
+            st.markdown(namespace["explanation"])
+            st.markdown(
+                "> **Références :** RFC 2606 (IETF), RFC 3172 (.arpa), "
+                "recherches Bleeping Computer / Kaspersky 2024-2025 sur "
+                "les campagnes de phishing exploitant l'espace de noms réservé."
+            )
 
     save_scan(url_input, "IPQualityScore", data)
 

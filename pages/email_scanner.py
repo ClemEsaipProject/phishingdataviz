@@ -107,7 +107,7 @@ def render():
 
     left, right = st.columns([1, 1])
     with left:
-        st.plotly_chart(fraud_gauge(fraud_score), use_container_width=True)
+        st.plotly_chart(fraud_gauge(fraud_score), width="stretch")
     with right:
         st.markdown("#### Details du domaine")
         st.markdown(f"**Domaine :** `{domain}`")

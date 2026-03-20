@@ -157,6 +157,113 @@ def get_url_report_virustotal(
 
 
 # =============================================================
+# Reserved Namespace Detection (variante phishing RFC 2606 / .arpa / TLD-ext)
+# =============================================================
+
+# TLDs classés par catégorie de risque.
+# Sources : RFC 2606, RFC 3172, ICANN, recherches Bleeping Computer / Kaspersky 2024-2025.
+_RESERVED_TLD_MAP: dict[str, tuple[str, str, str]] = {
+    # Infrastructure DNS — jamais légitime comme site web
+    "arpa":      ("infrastructure", "danger",
+                  ".arpa est réservé à l'infrastructure DNS inverse (RFC 3172). "
+                  "Son usage comme site web est un indicateur fort de phishing évasif."),
+    # RFC 2606 — garantis non-résolvables / réservés aux tests
+    "test":      ("rfc2606", "danger",
+                  ".test est réservé aux environnements de test (RFC 2606). "
+                  "Toute résolution publique est anormale."),
+    "example":   ("rfc2606", "danger",
+                  ".example est réservé à la documentation (RFC 2606)."),
+    "invalid":   ("rfc2606", "danger",
+                  ".invalid est garanti non-résolvable par le RFC 2606."),
+    "localhost": ("rfc2606", "danger",
+                  ".localhost est réservé à la boucle locale (RFC 2606)."),
+    # TLDs « extension de fichier » — confusion intentionnelle
+    "zip":       ("file_extension", "danger",
+                  ".zip imite une extension d'archive. Technique active : l'URL ressemble "
+                  "à un fichier que l'utilisateur croit ouvrir localement."),
+    "mov":       ("file_extension", "danger",
+                  ".mov imite une extension vidéo Apple/QuickTime."),
+    "exe":       ("file_extension", "danger",
+                  ".exe imite une extension d'exécutable Windows."),
+    "bat":       ("file_extension", "danger",
+                  ".bat imite une extension de script batch Windows."),
+    "cmd":       ("file_extension", "danger",
+                  ".cmd imite une extension de script Windows."),
+    "iso":       ("file_extension", "warn",
+                  ".iso imite une extension d'image disque."),
+    # TLDs privés d'entreprise qui « fuient » vers le DNS public (namespace collision)
+    "corp":      ("private_leak", "warn",
+                  ".corp est largement utilisé en interne par les entreprises. "
+                  "Sa résolution publique indique une collision de namespace Active Directory."),
+    "home":      ("private_leak", "warn",
+                  ".home est un TLD de réseau local non officiel utilisé par certains routeurs."),
+    "mail":      ("private_leak", "warn",
+                  ".mail est un TLD d'intranet non officiel — peut détourner des flux email."),
+    "workgroup": ("private_leak", "warn",
+                  ".workgroup est le TLD implicite des groupes de travail Windows."),
+    "internal":  ("private_leak", "warn",
+                  ".internal est désormais réservé par l'ICANN pour les réseaux privés (2024). "
+                  "Sa présence en accès public est une anomalie."),
+    "lan":       ("private_leak", "warn",
+                  ".lan est couramment utilisé dans les réseaux locaux domestiques."),
+    "intranet":  ("private_leak", "warn",
+                  ".intranet est un TLD d'intranet privé non officiel."),
+    "private":   ("private_leak", "warn",
+                  ".private est utilisé dans certains réseaux internes d'entreprise."),
+}
+
+_CATEGORY_LABELS = {
+    "infrastructure":  "Infrastructure DNS réservée",
+    "rfc2606":         "TLD réservé RFC 2606",
+    "file_extension":  "TLD imitant une extension de fichier",
+    "private_leak":    "Collision de namespace privé",
+}
+
+
+def detect_reserved_namespace(url: str) -> dict:
+    """
+    Détecte l'utilisation d'un TLD réservé ou à risque élevé
+    exploité dans les nouvelles campagnes de phishing (2024-2025).
+
+    Retourne un dict avec :
+      - flagged      : bool
+      - tld          : str
+      - category     : str  (infrastructure | rfc2606 | file_extension | private_leak | none)
+      - category_label : str
+      - risk         : str  (danger | warn | ok)
+      - explanation  : str
+    """
+    try:
+        netloc   = urlparse(url).netloc.lower()
+        hostname = netloc.split(":")[0]          # retire le port éventuel
+        tld      = hostname.rstrip(".").rsplit(".", 1)[-1]
+    except Exception:
+        return {"flagged": False, "tld": "", "category": "none",
+                "category_label": "", "risk": "ok", "explanation": ""}
+
+    if tld in _RESERVED_TLD_MAP:
+        category, risk, explanation = _RESERVED_TLD_MAP[tld]
+        log.warning(f"Reserved namespace détecté : .{tld} ({category}) pour {url}")
+        return {
+            "flagged":        True,
+            "tld":            tld,
+            "category":       category,
+            "category_label": _CATEGORY_LABELS[category],
+            "risk":           risk,
+            "explanation":    explanation,
+        }
+
+    return {
+        "flagged":        False,
+        "tld":            tld,
+        "category":       "none",
+        "category_label": "",
+        "risk":           "ok",
+        "explanation":    "",
+    }
+
+
+# =============================================================
 # Typosquatting
 # =============================================================
 
@@ -409,3 +516,117 @@ def get_redirect_chain(url: str, max_hops: int = 10) -> list[dict]:
 
     log.info(f"Redirect chain : {len(chain)} hop(s) pour {url}")
     return chain
+
+
+# =============================================================
+# Sprint 6 - WHOIS Lookup (raw socket, sans dépendance externe)
+# =============================================================
+
+def _whois_query(server: str, query: str) -> str:
+    """Envoie une requête WHOIS brute sur le port 43."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(10)
+    s.connect((server, 43))
+    s.send(f"{query}\r\n".encode())
+    chunks = []
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    s.close()
+    return b"".join(chunks).decode("utf-8", errors="ignore")
+
+
+def _parse_whois(raw: str, domain: str) -> dict:
+    """Extrait les champs clés d'une réponse WHOIS brute."""
+    result: dict = {"domain": domain}
+
+    field_map = {
+        "registrar":          ["registrar:", "registrar name:"],
+        "creation_date":      ["creation date:", "created:", "domain registered:"],
+        "expiration_date":    ["expiry date:", "registrar registration expiration date:",
+                               "expiration date:", "paid-till:"],
+        "updated_date":       ["updated date:", "last updated:", "last-updated:"],
+        "registrant_org":     ["registrant organization:", "registrant org:"],
+        "registrant_country": ["registrant country:", "registrant state/province:"],
+        "status":             ["domain status:"],
+        "name_servers":       ["name server:", "nserver:"],
+    }
+
+    ns_list:     list[str] = []
+    status_list: list[str] = []
+
+    for line in raw.splitlines():
+        lower = line.lower().strip()
+        for field, prefixes in field_map.items():
+            for prefix in prefixes:
+                if lower.startswith(prefix):
+                    value = line.split(":", 1)[1].strip() if ":" in line else ""
+                    if field == "name_servers":
+                        if value:
+                            ns_list.append(value.lower())
+                    elif field == "status":
+                        if value:
+                            status_list.append(value.split()[0])
+                    elif field not in result and value:
+                        result[field] = value
+                    break
+
+    if ns_list:
+        result["name_servers"] = list(dict.fromkeys(ns_list))[:4]
+    if status_list:
+        result["status"] = list(dict.fromkeys(status_list))[:3]
+
+    return result
+
+
+def get_whois(url: str) -> dict:
+    """
+    Retourne les informations WHOIS pour le domaine de l'URL.
+
+    Effectue d'abord une requête sur whois.iana.org pour obtenir
+    le serveur WHOIS autoritatif du TLD, puis interroge ce serveur.
+    """
+    try:
+        hostname = urlparse(url).netloc.replace("www.", "").split(":")[0]
+        if not hostname:
+            return {"error": "Hostname invalide"}
+
+        parts = hostname.split(".")
+        domain = ".".join(parts[-2:]) if len(parts) >= 2 else hostname
+        tld    = parts[-1].lower()
+
+        log.info(f"WHOIS lookup : {domain}")
+
+        # Étape 1 : serveur WHOIS du TLD via IANA
+        try:
+            iana_raw = _whois_query("whois.iana.org", tld)
+        except Exception as e:
+            log.warning(f"IANA WHOIS echoue : {e}")
+            return {"error": f"IANA injoignable : {str(e)[:80]}"}
+
+        whois_server = None
+        for line in iana_raw.splitlines():
+            if line.lower().startswith("whois:"):
+                whois_server = line.split(":", 1)[1].strip()
+                break
+
+        if not whois_server:
+            return {"error": f"Serveur WHOIS introuvable pour .{tld}"}
+
+        # Étape 2 : requête sur le serveur du TLD
+        try:
+            raw = _whois_query(whois_server, domain)
+        except Exception as e:
+            log.warning(f"WHOIS {whois_server} echoue : {e}")
+            return {"error": f"Serveur WHOIS injoignable : {str(e)[:80]}"}
+
+        result = _parse_whois(raw, domain)
+        result["whois_server"] = whois_server
+        log.info(f"WHOIS recu pour {domain} via {whois_server}")
+        return result
+
+    except Exception as e:
+        log.error(f"WHOIS erreur inattendue pour {url} : {e}")
+        return {"error": str(e)[:120]}
