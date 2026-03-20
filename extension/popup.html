@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>PhishGuard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 280px;
+      font-family: "Segoe UI", sans-serif;
+      background: #0e1117;
+      color: #e0e0e0;
+      padding: 16px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    header h1 { font-size: 15px; font-weight: 700; color: #00d4ff; }
+
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+    #status-dot.online  { background: #00cc88; }
+    #status-dot.offline { background: #ff4b4b; }
+
+    #status-text { font-size: 11px; color: #8b95a5; margin-bottom: 14px; }
+
+    .section-title {
+      font-size: 11px;
+      color: #8b95a5;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid #1a1d2e;
+      font-size: 13px;
+    }
+    .stat-row:last-child { border-bottom: none; }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge.CRITICAL { background: #cc0000; color: #fff; }
+    .badge.HIGH     { background: #e65c00; color: #fff; }
+    .badge.MEDIUM   { background: #e6c200; color: #1a1a00; }
+    .badge.LOW      { background: #b3d9ff; color: #003366; }
+    .badge.SAFE     { background: #1a2e1a; color: #00cc88; }
+
+    footer {
+      margin-top: 14px;
+      font-size: 10px;
+      color: #555;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div id="status-dot"></div>
+    <h1>PhishGuard</h1>
+  </header>
+
+  <p id="status-text">Vérification du backend…</p>
+
+  <p class="section-title">Page courante</p>
+  <div id="stats">
+    <div class="stat-row"><span>Liens scannés</span>   <span id="count-total">—</span></div>
+    <div class="stat-row"><span>CRITICAL</span>        <span class="badge CRITICAL"  id="count-critical">0</span></div>
+    <div class="stat-row"><span>HIGH</span>            <span class="badge HIGH"      id="count-high">0</span></div>
+    <div class="stat-row"><span>MEDIUM</span>          <span class="badge MEDIUM"    id="count-medium">0</span></div>
+    <div class="stat-row"><span>LOW</span>             <span class="badge LOW"       id="count-low">0</span></div>
+    <div class="stat-row"><span>SAFE</span>            <span class="badge SAFE"      id="count-safe">0</span></div>
+  </div>
+
+  <footer>PhishGuard v1.0 · backend :5050</footer>
+  <script src="popup.js"></script>
+</body>
+</html>
